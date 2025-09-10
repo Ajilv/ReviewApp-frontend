@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Camera } from 'lucide-react';
-import Popup from '../components/PopupExample'; // Added missing import
+import Popup from '../components/PopupExample'; // Ensure this points to the correct Popup component
 import { useNavigate } from 'react-router-dom';
-import { apiService  } from '../services/api';
-import {ReviewFormData} from '../types';
+import { apiService } from '../services/api';
+import { ReviewFormData } from '../types';
 
 const WriteReviewPage: React.FC = () => {
   const [reviewText, setReviewText] = useState('');
@@ -17,7 +17,6 @@ const WriteReviewPage: React.FC = () => {
 
   // Mock function to simulate predicted rating based on text length
   const getMockPredictedRating = (text: string): number => {
-    // Simple heuristic: longer reviews get higher ratings (for demo purposes)
     const length = text.trim().length;
     if (length < 20) return 3;
     if (length < 50) return 3.5;
@@ -38,7 +37,6 @@ const WriteReviewPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate text field (minimum 5 characters, as per backend)
     if (!reviewText.trim()) {
       setError('Review text is required');
       return;
@@ -52,14 +50,14 @@ const WriteReviewPage: React.FC = () => {
       authorName: publicName || '',
       content: reviewText,
       title: reviewTitle || 'Review',
-      rating: predictedRating || 3 // For mock data
+      rating: predictedRating || 3, // Use predicted rating
     };
 
     try {
       const response = await apiService.submitReview(productId, reviewData);
       if (response.success && response.data?.review) {
         setShowPopup(true);
-        setPredictedRating(response.data.review.predicted_rating || 3); // Use backend-provided rating
+        setPredictedRating(response.data.review.predicted_rating || predictedRating || 3); // Use backend rating or fallback
         setReviewText('');
         setReviewTitle('');
         setPublicName('');
@@ -85,18 +83,12 @@ const WriteReviewPage: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-900">How was the item?</h2>
               </div>
 
-              {/* Display Predicted Rating */}
+              {/* Overview Message */}
               <div className="mb-8">
-                <h3 className="font-semibold text-gray-900 mb-3 text-lg">Predicted Rating</h3>
-                <div className="flex items-center gap-2">
-                  {predictedRating ? (
-                    <span className="text-yellow-400 font-semibold">
-                      {predictedRating} ★
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">Enter review (at least 5 characters) to see predicted rating</span>
-                  )}
-                </div>
+                <h3 className="font-semibold text-gray-900 mb-3 text-lg">Overview</h3>
+                <p className="text-gray-600">
+                  Your rating will be automatically generated based on your review text and displayed after submission.
+                </p>
                 {error && <p className="text-red-500 mt-2">{error}</p>}
               </div>
 
@@ -114,7 +106,9 @@ const WriteReviewPage: React.FC = () => {
 
               {/* Write Review */}
               <div className="mb-8">
-                <h3 className="font-semibold text-gray-900 mb-3 text-lg">Write a review <span className="text-red-500">(required)</span></h3>
+                <h3 className="font-semibold text-gray-900 mb-3 text-lg">
+                  Write a review <span className="text-red-500">(required)</span>
+                </h3>
                 <textarea
                   value={reviewText}
                   onChange={(e) => handleTextChange(e.target.value)}
@@ -155,8 +149,12 @@ const WriteReviewPage: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Moved Popup inside the main return block */}
-      <Popup open={showPopup} onClose={() => setShowPopup(false)} />
+      {/* Pass predictedRating to Popup */}
+      <Popup
+        open={showPopup}
+        onClose={() => setShowPopup(false)}
+        predictedRating={predictedRating || 3} // Fallback to 3 if null
+      />
     </div>
   );
 };
