@@ -69,7 +69,45 @@ const reviews: Review[] = [
 const ReviewsPage: React.FC = () => {
   const [visibleCount, setVisibleCount] = useState(3);
   const [sortBy, setSortBy] = useState('newest');
+  const [reviewHelpfulCounts, setReviewHelpfulCounts] = useState<{ [key: number]: number }>({});
+  const [likedReviews, setLikedReviews] = useState<Set<number>>(new Set());
+  const [reportedReviews, setReportedReviews] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
+
+  // Calculate dynamic average rating from actual reviews
+  const averageRating = useMemo(() => {
+    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+    return Number((totalRating / reviews.length).toFixed(1));
+  }, []);
+
+  // Calculate total reviews count
+  const totalReviews = reviews.length;
+
+  // Calculate rating distribution based on actual reviews
+  const ratingDistribution = useMemo(() => {
+    const distribution = [
+      { stars: 5, count: 0, percentage: 0 },
+      { stars: 4, count: 0, percentage: 0 },
+      { stars: 3, count: 0, percentage: 0 },
+      { stars: 2, count: 0, percentage: 0 },
+      { stars: 1, count: 0, percentage: 0 }
+    ];
+
+    // Count reviews for each rating
+    reviews.forEach(review => {
+      const ratingIndex = distribution.findIndex(item => item.stars === review.rating);
+      if (ratingIndex !== -1) {
+        distribution[ratingIndex].count++;
+      }
+    });
+
+    // Calculate percentages
+    distribution.forEach(item => {
+      item.percentage = Math.round((item.count / totalReviews) * 100);
+    });
+
+    return distribution;
+  }, [totalReviews]);
 
   // Sort reviews based on the selected option
   const sortedReviews = useMemo(() => {
@@ -85,11 +123,15 @@ const ReviewsPage: React.FC = () => {
       case 'lowest':
         return reviewsCopy.sort((a, b) => a.rating - b.rating);
       case 'helpful':
-        return reviewsCopy.sort((a, b) => b.helpful - a.helpful);
+        return reviewsCopy.sort((a, b) => {
+          const aHelpful = reviewHelpfulCounts[a.id] !== undefined ? reviewHelpfulCounts[a.id] : a.helpful;
+          const bHelpful = reviewHelpfulCounts[b.id] !== undefined ? reviewHelpfulCounts[b.id] : b.helpful;
+          return bHelpful - aHelpful;
+        });
       default:
         return reviewsCopy;
     }
-  }, [sortBy]);
+  }, [sortBy, reviewHelpfulCounts]);
 
   const loadMore = () => {
     setVisibleCount((prev) => Math.min(prev + 3, sortedReviews.length));
@@ -101,6 +143,46 @@ const ReviewsPage: React.FC = () => {
 
   const handleWriteReview = () => {
     navigate('/write-review');
+  };
+
+  // Handle helpful button click
+  const handleHelpfulClick = (reviewId: number, currentCount: number) => {
+    if (likedReviews.has(reviewId)) {
+      // Unlike - decrease count
+      setReviewHelpfulCounts(prev => ({
+        ...prev,
+        [reviewId]: (prev[reviewId] !== undefined ? prev[reviewId] : currentCount) - 1
+      }));
+      setLikedReviews(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(reviewId);
+        return newSet;
+      });
+    } else {
+      // Like - increase count
+      setReviewHelpfulCounts(prev => ({
+        ...prev,
+        [reviewId]: (prev[reviewId] !== undefined ? prev[reviewId] : currentCount) + 1
+      }));
+      setLikedReviews(prev => new Set(prev).add(reviewId));
+    }
+  };
+
+  // Handle report button click
+  const handleReportClick = (reviewId: number) => {
+    if (reportedReviews.has(reviewId)) {
+      // Un-report
+      setReportedReviews(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(reviewId);
+        return newSet;
+      });
+    } else {
+      // Report
+      setReportedReviews(prev => new Set(prev).add(reviewId));
+      // You could also show a confirmation message here
+      alert('Review has been reported. Thank you for helping maintain quality standards.');
+    }
   };
 
   const StarRating = ({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'lg' }) => {
@@ -121,16 +203,6 @@ const ReviewsPage: React.FC = () => {
       </div>
     );
   };
-
-  const averageRating = 4.2;
-  const totalReviews = 247;
-  const ratingDistribution = [
-    { stars: 5, count: 128, percentage: 52 },
-    { stars: 4, count: 86, percentage: 35 },
-    { stars: 3, count: 25, percentage: 10 },
-    { stars: 2, count: 5, percentage: 2 },
-    { stars: 1, count: 3, percentage: 1 }
-  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -221,50 +293,79 @@ const ReviewsPage: React.FC = () => {
 
             {/* Reviews */}
             <div className="space-y-4">
-              {sortedReviews.slice(0, visibleCount).map((review) => (
-                <div key={review.id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
-                  
-                  {/* Review Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                        <User className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{review.name}</h3>
-                        <div className="flex items-center gap-2">
-                          <StarRating rating={review.rating} />
-                          <span className="text-sm text-gray-500">•</span>
-                          <span className="text-sm text-gray-500">{review.date}</span>
+              {sortedReviews.slice(0, visibleCount).map((review) => {
+                const currentHelpfulCount = reviewHelpfulCounts[review.id] !== undefined 
+                  ? reviewHelpfulCounts[review.id] 
+                  : review.helpful;
+                const isLiked = likedReviews.has(review.id);
+                const isReported = reportedReviews.has(review.id);
+
+                return (
+                  <div key={review.id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
+                    
+                    {/* Review Header */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                          <User className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{review.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <StarRating rating={review.rating} />
+                            <span className="text-sm text-gray-500">•</span>
+                            <span className="text-sm text-gray-500">{review.date}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2">
+                        {review.verified && (
+                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                            Verified Purchase
+                          </span>
+                        )}
+                        {isReported && (
+                          <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
+                            Reported
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {review.verified && (
-                      <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
-                        Verified Purchase
-                      </span>
-                    )}
-                  </div>
 
-                  {/* Review Content */}
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-gray-900 mb-2">{review.title}</h4>
-                    <p className="text-gray-700 leading-relaxed">{review.content}</p>
-                  </div>
+                    {/* Review Content */}
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-gray-900 mb-2">{review.title}</h4>
+                      <p className="text-gray-700 leading-relaxed">{review.content}</p>
+                    </div>
 
-                  {/* Review Actions */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                      <ThumbsUp className="w-4 h-4" />
-                      Helpful ({review.helpful})
-                    </button>
-                    <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      <Flag className="w-4 h-4" />
-                      Report
-                    </button>
+                    {/* Review Actions */}
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      <button 
+                        onClick={() => handleHelpfulClick(review.id, review.helpful)}
+                        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          isLiked 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <ThumbsUp className={`w-4 h-4 ${isLiked ? 'fill-blue-700' : ''}`} />
+                        Helpful ({currentHelpfulCount})
+                      </button>
+                      <button 
+                        onClick={() => handleReportClick(review.id)}
+                        className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          isReported
+                            ? 'bg-red-100 text-red-700'
+                            : 'text-gray-500 hover:text-red-600 hover:bg-red-50'
+                        }`}
+                      >
+                        <Flag className={`w-4 h-4 ${isReported ? 'fill-red-700' : ''}`} />
+                        {isReported ? 'Reported' : 'Report'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Load More/Less Buttons */}
